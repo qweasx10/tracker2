@@ -57,7 +57,7 @@ def compute_color_for_labels(label):
     return tuple(color)
 
 
-def draw_boxes(img, bbox, identities=None, offset=(0, 0)):
+def draw_boxes(img, bbox, cls_names, identities=None, offset=(0, 0)):
     for i, box in enumerate(bbox):
         x1, y1, x2, y2 = [int(i) for i in box]
         x1 += offset[0]
@@ -67,14 +67,14 @@ def draw_boxes(img, bbox, identities=None, offset=(0, 0)):
         # box text and bar
         id = int(identities[i]) if identities is not None else 0
         color = compute_color_for_labels(id)
-        label = '{}{:d}'.format("", id)
+        label = '%d %s' % (id, cls_names[i])
         t_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_PLAIN, 2, 2)[0]
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 3)
         cv2.rectangle(
             img, (x1, y1), (x1 + t_size[0] + 3, y1 + t_size[1] + 4), color, -1)
         cv2.putText(img, label, (x1, y1 +
                                  t_size[1] + 4), cv2.FONT_HERSHEY_PLAIN, 2, [255, 255, 255], 2)
-    return img
+    #return img
 
 
 def detect(opt):
@@ -175,8 +175,10 @@ def detect(opt):
                     n = (det[:, -1] == c).sum()  # detections per class
                     s += '%g %ss, ' % (n, names[int(c)])  # add to string
 
+
                 xywh_bboxs = []
                 confs = []
+                classes= []
 
                 # Adapt detections to deep sort input format
                 for *xyxy, conf, cls in det:
@@ -185,18 +187,22 @@ def detect(opt):
                     xywh_obj = [x_c, y_c, bbox_w, bbox_h]
                     xywh_bboxs.append(xywh_obj)
                     confs.append([conf.item()])
+                    classes.append([cls.item()])
 
                 xywhs = torch.Tensor(xywh_bboxs)
                 confss = torch.Tensor(confs)
+                classes = torch.Tensor(classes)
+
 
                 # pass detections to deepsort
-                outputs = deepsort.update(xywhs, confss, im0)
+                outputs = deepsort.update(xywhs, confss, classes, im0)
 
                 # draw boxes for visualization
                 if len(outputs) > 0:
                     bbox_xyxy = outputs[:, :4]
-                    identities = outputs[:, -1]
-                    draw_boxes(im0, bbox_xyxy, identities)
+                    identities = outputs[:, 4]
+                    classes = outputs[:, 5]
+                    draw_boxes(im0, bbox_xyxy,[names[i] for i in classes], identities)
                     # to MOT format
                     tlwh_bboxs = xyxy_to_tlwh(bbox_xyxy)
 
