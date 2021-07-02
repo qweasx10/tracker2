@@ -1,4 +1,5 @@
 import sys
+import math
 sys.path.insert(0, './yolov5')
 
 from yolov5.utils.google_utils import attempt_download
@@ -70,11 +71,43 @@ def draw_boxes(img, bbox, cls_names, identities=None, offset=(0, 0)):
         label = '%d %s' % (id, cls_names[i])
         t_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_PLAIN, 2, 2)[0]
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 3)
+        y_h = int(y1+(y2-y1)/2)
+        x_h = int(x1+(x2-x1)/2)
+        #cv2.line(img, (x2, y2), (x2, y2), (0, 0, 255), 5)
         cv2.rectangle(
             img, (x1, y1), (x1 + t_size[0] + 3, y1 + t_size[1] + 4), color, -1)
-        cv2.putText(img, label, (x1, y1 +
-                                 t_size[1] + 4), cv2.FONT_HERSHEY_PLAIN, 2, [255, 255, 255], 2)
+        cv2.putText(img, label, (x1, y1 + t_size[1] + 4), cv2.FONT_HERSHEY_PLAIN, 2, [255, 255, 255], 2)
     #return img
+
+
+def myInterSibal(person_corX, person_corY):
+    # 처음에 if 함수로 써서 라인 기울기 음, 양에 따라 다른 케이스로 진행하는게 나을듯.
+    # myline에서 가져오는코드로735
+    #line = [(735, 520), (1093, 287)]
+    mylineX1 = 735
+    mylineY1 = 520
+    mylineX2 = 1093
+    mylineY2 = 287
+    #라인 기울기 Lgiul
+
+    Lgiul = (mylineY2-mylineY1)/(mylineX2-mylineX1)
+
+    #점과 라인 기울기 spot_Lgiul
+    spot_Lgiul1 = (person_corY-mylineY1)/(person_corX-mylineX1)
+    spot_Lgiul2 = (mylineY2-person_corY)/(mylineX2-person_corX)
+    c = math.degrees(2 * math.pi)
+
+    if Lgiul < 0:
+        if spot_Lgiul2 > Lgiul and person_corY>mylineY2:
+            return True
+        else: return False
+
+    elif Lgiul > 0:
+        if spot_Lgiul2 < Lgiul:
+            return True
+        else:
+            return False
+
 
 
 def detect(opt):
@@ -85,6 +118,8 @@ def detect(opt):
         'rtsp') or source.startswith('http') or source.endswith('.txt')
 
     # initialize deepsort
+    counter = 0
+    line = [(735, 520), (1093, 287)]
     cfg = get_config()
     cfg.merge_from_file(opt.config_deepsort)
     attempt_download(deep_sort_weights, repo='mikel-brostrom/Yolov5_DeepSort_Pytorch')
@@ -96,6 +131,8 @@ def detect(opt):
 
     # Initialize
     device = select_device(opt.device)
+
+
 
     # The MOT16 evaluation runs multiple inference streams in parallel, each one writing to
     # its own .txt file. Hence, in that case, the output folder is not restored
@@ -110,7 +147,7 @@ def detect(opt):
     model = attempt_load(yolo_weights, map_location=device)  # load FP32 model
     stride = int(model.stride.max())  # model stride
     imgsz = check_img_size(imgsz, s=stride)  # check img_size
-    names = model.module.names if hasattr(model, 'module') else model.names  # get class names
+
     if half:
         model.half()  # to FP16
 
@@ -140,6 +177,7 @@ def detect(opt):
     txt_path = str(Path(out)) + '/' + txt_file_name + '.txt'
 
     for frame_idx, (path, img, im0s, vid_cap) in enumerate(dataset):
+
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
@@ -147,6 +185,7 @@ def detect(opt):
             img = img.unsqueeze(0)
 
         # Inference
+
         t1 = time_synchronized()
         pred = model(img, augment=opt.augment)[0]
 
@@ -164,7 +203,8 @@ def detect(opt):
 
             s += '%gx%g ' % img.shape[2:]  # print string
             save_path = str(Path(out) / Path(p).name)
-
+            cv2.line(im0, (100, 765), (735, 520), (0, 255, 255), 2)
+            cv2.line(im0, (735, 520), (1093, 287), (0, 255, 255), 2)
             if det is not None and len(det):
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_coords(
@@ -186,6 +226,7 @@ def detect(opt):
                     x_c, y_c, bbox_w, bbox_h = xyxy_to_xywh(*xyxy)
                     xywh_obj = [x_c, y_c, bbox_w, bbox_h]
                     xywh_bboxs.append(xywh_obj)
+
                     confs.append([conf.item()])
                     classes.append([cls.item()])
 
@@ -196,6 +237,17 @@ def detect(opt):
 
                 # pass detections to deepsort
                 outputs = deepsort.update(xywhs, confss, classes, im0)
+                x_h = int(xywh_obj[0]+xywh_obj[2]/2)
+                y_h = int(xywh_obj[1]+xywh_obj[3]/2)
+                p1 = (int(xywh_obj[0]),int(xywh_obj[1]))
+
+                # 객체 중심점
+
+
+
+                if myInterSibal(x_h,y_h):
+                    cv2.putText(im0,'**Invader**', (50, 75), cv2.FONT_HERSHEY_DUPLEX, 2.0, (0, 0, 255), 3)
+
 
                 # draw boxes for visualization
                 if len(outputs) > 0:
@@ -204,6 +256,7 @@ def detect(opt):
                     classes = outputs[:, 5]
                     draw_boxes(im0, bbox_xyxy,[names[i] for i in classes], identities)
                     # to MOT format
+                    cv2.line(im0, (x_h, y_h), (x_h, y_h), (0, 0, 255), 5)
                     tlwh_bboxs = xyxy_to_tlwh(bbox_xyxy)
 
                     # Write MOT compliant results to file
