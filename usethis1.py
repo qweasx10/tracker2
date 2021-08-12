@@ -1,13 +1,29 @@
+# 현 + 범
+# 사용 명령어
+# python Usethis.py --source Intrusion.mp4 --img 640
+
+
+
 import sys
-import math
+
+
 sys.path.insert(0, './yolov5')
+
 from xml.etree.ElementTree import Element, SubElement, ElementTree
+from lxml import etree
+
+from numpy import random
+
+
+
+from yolov5.utils.plots import plot_one_box
 from yolov5.utils.google_utils import attempt_download
 from yolov5.models.experimental import attempt_load
 from yolov5.utils.datasets import LoadImages, LoadStreams
 from yolov5.utils.general import check_img_size, non_max_suppression, scale_coords, \
-    check_imshow
+    check_imshow, xyxy2xywh
 from yolov5.utils.torch_utils import select_device, time_synchronized
+
 from deep_sort_pytorch.utils.parser import get_config
 from deep_sort_pytorch.deep_sort import DeepSort
 import argparse
@@ -20,25 +36,41 @@ import cv2
 import torch
 import torch.backends.cudnn as cudnn
 import datetime
-from lxml import etree
-
-
-
 palette = (2 ** 11 - 1, 2 ** 15 - 1, 2 ** 20 - 1)
+유기 = './/DetectArea'
+침입 = './/Intrusion'
+배회 = './/Loitering'
 
-def xml(filename):
-    tree = etree.parse(filename)
-    root = tree.getroot()
-    d = root.find('.//Intrusion').findall('Point')
-    return d
+#######################################여기서 상황 쓰셈
+circumstance = 배회
+
+#######################################
+
+
+# 쓰고싶은 xml 쓰기
+
+# xmlname = 'abandon.xml'
+# xmlname = 'Intrusion.xml'
+xmlname = 'C002101_001.xml'
+
+#유기판단 함수
+def abandonment(point, point_2):
+    # obj: point_2 좌표
+    # 사람: point 좌표
+    # 거리 계산(전체 크기에서 x 비율 잡고, 그 비율보다 작으면 잡아내는것으로 만들어야 함)
+
+    if (abs(point[0] - point_2[0]) <= 10)&(abs(point[1] - point_2[1]) <= 10):
+        print("##########################close#################################")
+    else:
+        pass
+
 
 def is_inside(polygon, point):
-
     def cross(p1, p2):
         x1, y1 = p1
         x2, y2 = p2
 
-        if y1-y2 == 0:
+        if y1 - y2 == 0:
             if y1 == point[1]:
                 if min(x1, x2) <= point[0] <= max(x1, x2):
                     return 1, True
@@ -55,19 +87,20 @@ def is_inside(polygon, point):
         x = (point[1] - b) / a
         if point[0] <= x:
             if min(y1, y2) <= point[1] <= max(y1, y2):
-                return 1, point[0] == x or point[1] in (y1,y2)
+                return 1, point[0] == x or point[1] in (y1, y2)
         return 0, False
 
     cross_points = 0
     for x in range(len(polygon)):
-        num, on_line = cross(polygon[x], polygon[x-1])
+        num, on_line = cross(polygon[x], polygon[x - 1])
         if on_line:
             return True
         cross_points += num
     return cross_points % 2
 
+
 def xyxy_to_xywh(*xyxy):
-    """" Calculates the relative bounding box from absolute pixel values. """
+    '''Calculates the relative bounding box from absolute pixel values. '''
     bbox_left = min([xyxy[0].item(), xyxy[2].item()])
     bbox_top = min([xyxy[1].item(), xyxy[3].item()])
     bbox_w = abs(xyxy[0].item() - xyxy[2].item())
@@ -77,6 +110,7 @@ def xyxy_to_xywh(*xyxy):
     w = bbox_w
     h = bbox_h
     return x_c, y_c, w, h
+
 
 def xyxy_to_tlwh(bbox_xyxy):
     tlwh_bboxs = []
@@ -90,28 +124,35 @@ def xyxy_to_tlwh(bbox_xyxy):
         tlwh_bboxs.append(tlwh_obj)
     return tlwh_bboxs
 
+def xml(filename):
+    tree = etree.parse(filename)
+    root = tree.getroot()
+    d = root.find(circumstance).findall('Point')
+    return d
 
-def makexml(filename,alt,frame_idx):
-
+#현민아 부탁할게. makexml 까지 하는구나
+def makexml(filename, alt, frame_idx):
     root = Element('KisaLibraryIndex')
-    lib = SubElement(root,'Library')
-    SubElement(lib,'Senario').text = 'Intrusion'
-    SubElement(lib,'Dataset').text = 'KISA201'
-    SubElement(lib,'Libversion').text = '1.0'
-    clip = SubElement(lib,'Clip')
-    head = SubElement(clip,'Header')
-    SubElement(head,'Filename').text = filename+'.mp4'
-    SubElement(head,'Duration').text =(lambda x : '0'+x if len(x) < 8 else x)(str(datetime.timedelta(seconds = frame_idx)))
-    SubElement(head, 'AlarmEvents').text ='1'
-    al = SubElement(clip,'Alarms')
-    alm = SubElement(al,'Alarm')
-    SubElement(alm,'StartTime').text = (lambda x : '0'+x if len(x) < 8 else x)(str(datetime.timedelta(seconds = alt)))
-    SubElement(alm,'AlarmDescription').text = 'Intrusion'
-    SubElement(alm,'AlarmDuration').text = '00:00:10'
-
+    lib = SubElement(root, 'Library')
+    SubElement(lib, 'Senario').text = 'Intrusion'
+    SubElement(lib, 'Dataset').text = 'KISA201'
+    SubElement(lib, 'Libversion').text = '1.0'
+    clip = SubElement(lib, 'Clip')
+    head = SubElement(clip, 'Header')
+    SubElement(head, 'Filename').text = filename + '.mp4'
+    SubElement(head, 'Duration').text = (lambda x: '0' + x if len(x) < 8 else x)(
+        str(datetime.timedelta(seconds=frame_idx)))
+    SubElement(head, 'AlarmEvents').text = '1'
+    al = SubElement(clip, 'Alarms')
+    alm = SubElement(al, 'Alarm')
+    SubElement(alm, 'StartTime').text = (lambda x: '0' + x if len(x) < 8 else x)(str(datetime.timedelta(seconds=alt)))
+    SubElement(alm, 'AlarmDescription').text = 'Intrusion'
+    SubElement(alm, 'AlarmDuration').text = '00:00:10'
 
     tree = ElementTree(root)
     tree.write('./' + filename + '.xml')
+
+
 def compute_color_for_labels(label):
     """
     Simple function that adds fixed color depending on the class
@@ -133,55 +174,36 @@ def draw_boxes(img, bbox, cls_names, identities=None, offset=(0, 0)):
         label = '%d %s' % (id, cls_names[i])
         t_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_PLAIN, 2, 2)[0]
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 3)
-        y_h = int(y1+(y2-y1)/2)
-        x_h = int(x1+(x2-x1)/2)
-        cv2.line(img, (x_h, y_h), (x_h, y_h), (0, 0, 255), 5)
         cv2.rectangle(
             img, (x1, y1), (x1 + t_size[0] + 3, y1 + t_size[1] + 4), color, -1)
-        cv2.putText(img, label, (x1, y1 + t_size[1] + 4), cv2.FONT_HERSHEY_PLAIN, 2, [255, 255, 255], 2)
-    #return img
 
+        # My#
+        y_h = int(y1 + (y2 - y1) / 2)
+        x_h = int(x1 + (x2 - x1) / 2)
 
-def myInterSibal(person_corX, person_corY):
-    # 처음에 if 함수로 써서 라인 기울기 음, 양에 따라 다른 케이스로 진행하는게 나을듯.
-    # myline에서 가져오는코드로735
-    #line = [(735, 520), (1093, 287)]
-    mylineX1 = 735
-    mylineY1 = 520
-    mylineX2 = 1093
-    mylineY2 = 287
-    #라인 기울기 Lgiul
+        # 추출된 원하는 객체만 가운데에 점찍기.
+        if cls_names[i] == 'person':
+            cv2.line(img, (x_h, y_h), (x_h, y_h), (0, 0, 255), 5)
+        # My#
 
-    Lgiul = (mylineY2-mylineY1)/(mylineX2-mylineX1)
+        cv2.putText(img, label, (x1, y1 +
+                                 t_size[1] + 4), cv2.FONT_HERSHEY_PLAIN, 2, [255, 255, 255], 2)
 
-    #점과 라인 기울기 spot_Lgiul
-    spot_Lgiul1 = (person_corY-mylineY1)/(person_corX-mylineX1)
-    spot_Lgiul2 = (mylineY2-person_corY)/(mylineX2-person_corX)
-    c = math.degrees(2 * math.pi)
+    return x_h, y_h
 
-    if Lgiul < 0:
-        if spot_Lgiul2 > Lgiul and person_corY>mylineY2 and person_corY<mylineY1:
-            return True
-        else: return False
-
-    elif Lgiul > 0:
-        if spot_Lgiul2 < Lgiul:
-            return True
-        else:
-            return False
 
 
 
 def detect(opt):
     out, source, yolo_weights, deep_sort_weights, show_vid, save_vid, save_txt, imgsz, evaluate = \
         opt.output, opt.source, opt.yolo_weights, opt.deep_sort_weights, opt.show_vid, opt.save_vid, \
-            opt.save_txt, opt.img_size, opt.evaluate
+        opt.save_txt, opt.img_size, opt.evaluate
     webcam = source == '0' or source.startswith(
         'rtsp') or source.startswith('http') or source.endswith('.txt')
-    cnt = 1
+
+
+
     # initialize deepsort
-    counter = 0
-    line = [(735, 520), (1093, 287)]
     cfg = get_config()
     cfg.merge_from_file(opt.config_deepsort)
     attempt_download(deep_sort_weights, repo='mikel-brostrom/Yolov5_DeepSort_Pytorch')
@@ -193,8 +215,6 @@ def detect(opt):
 
     # Initialize
     device = select_device(opt.device)
-
-
 
     # The MOT16 evaluation runs multiple inference streams in parallel, each one writing to
     # its own .txt file. Hence, in that case, the output folder is not restored
@@ -209,24 +229,25 @@ def detect(opt):
     model = attempt_load(yolo_weights, map_location=device)  # load FP32 model
     stride = int(model.stride.max())  # model stride
     imgsz = check_img_size(imgsz, s=stride)  # check img_size
-
+    names = model.module.names if hasattr(model, 'module') else model.names  # get class names
     if half:
         model.half()  # to FP16
 
     # Set Dataloader
     vid_path, vid_writer = None, None
-    # Check if environment supports image displays
+    # Check if environment supports images displays
     if show_vid:
         show_vid = check_imshow()
 
     if webcam:
-        cudnn.benchmark = True  # set True to speed up constant image size inference
+        cudnn.benchmark = True  # set True to speed up constant images size inference
         dataset = LoadStreams(source, img_size=imgsz, stride=stride)
     else:
         dataset = LoadImages(source, img_size=imgsz)
 
     # Get names and colors
     names = model.module.names if hasattr(model, 'module') else model.names
+    colors = [[random.randint(0, 255) for _ in range(3)] for _ in range(len(names))]
 
     # Run inference
     if device.type != 'cpu':
@@ -238,8 +259,17 @@ def detect(opt):
     txt_file_name = source.split('/')[-1].split('.')[0]
     txt_path = str(Path(out)) + '/' + txt_file_name + '.txt'
 
-    for frame_idx, (path, img, im0s, vid_cap) in enumerate(dataset):
+    # My #
+    # 여기에 써야 한번만 읽음
 
+    # 원하는 클래스만 계산
+
+    idx_person = names.index("person")
+
+    # My #
+    ctt = 0
+    # for문 돌아가며 인식 계속 돌아가는 for문으로 객체를 인식하고, 바운딩 박스를 for문마다 그려줌
+    for frame_idx, (path, img, im0s, vid_cap) in enumerate(dataset):
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
@@ -247,7 +277,6 @@ def detect(opt):
             img = img.unsqueeze(0)
 
         # Inference
-
         t1 = time_synchronized()
         pred = model(img, augment=opt.augment)[0]
 
@@ -256,8 +285,8 @@ def detect(opt):
             pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
         t2 = time_synchronized()
 
-        # Process detections
-        for i, det in enumerate(pred):  # detections per image
+        # Process detections (Apply Classifier)
+        for i, det in enumerate(pred):  # detections per images
             if webcam:  # batch_size >= 1
                 p, s, im0 = path[i], '%g: ' % i, im0s[i].copy()
             else:
@@ -268,7 +297,9 @@ def detect(opt):
             e = []
             pol = []
             ct = 0
-            for o in xml('C104301_001.xml'):
+
+            # xml 파일 지정
+            for o in xml(xmlname):
                 v = o.text.split(',')
                 e.append(v)
                 pol.append([])
@@ -282,6 +313,7 @@ def detect(opt):
                 else:
                     cv2.line(im0, (int(e[i][0]), int(e[i][1])), (int(e[0][0]), int(e[0][1])), (0, 255, 255), 2)
 
+            # 공통영역. 식별 시작
             if det is not None and len(det):
                 # Rescale boxes from img_size to im0 size
                 det[:, :4] = scale_coords(
@@ -292,83 +324,97 @@ def detect(opt):
                     n = (det[:, -1] == c).sum()  # detections per class
                     s += '%g %ss, ' % (n, names[int(c)])  # add to string
 
-
                 xywh_bboxs = []
                 confs = []
-                classes= []
+                classes = []
 
                 # Adapt detections to deep sort input format
                 for *xyxy, conf, cls in det:
                     # to deep sort format
                     x_c, y_c, bbox_w, bbox_h = xyxy_to_xywh(*xyxy)
                     xywh_obj = [x_c, y_c, bbox_w, bbox_h]
-                    xywh_bboxs.append(xywh_obj)
 
+                    #  cls.item() == 0.0 << 사람의 경우가 됨. car의 경우 2.0 # 인덱스의 번호를 따름 그렇지만 사용하면 오류
+                    xywh_bboxs.append(xywh_obj)
                     confs.append([conf.item()])
                     classes.append([cls.item()])
+                    # classes == [[0.0]] << 사람의 경우가 됌 car의 경우 [[2.0]] # 응 안써
 
                 xywhs = torch.Tensor(xywh_bboxs)
                 confss = torch.Tensor(confs)
                 classes = torch.Tensor(classes)
-
-
-                # pass detections to deepsort
+                # pass detections to deepsort -># draw boxes for visualization 넘어감(메인 코드)
+                # 추출된 객체의 모든 정보를 딥솔트해서  >> outputs로 넘겨줌
                 outputs = deepsort.update(xywhs, confss, classes, im0)
-                x_h = int(xywh_obj[0]+xywh_obj[2]/2) #오른쪽 하단
-                y_h = int(xywh_obj[1]+xywh_obj[3]/2)
-                x_o = int(xywh_obj[0]-xywh_obj[2]/2) #왼쪽 상단
-                y_o = int(xywh_obj[1]-xywh_obj[3]/2)
-                x_r = int(xywh_obj[1]-xywh_obj[3]/2) #오른쪽 상단
-                y_r = int(xywh_obj[0]+xywh_obj[2]/2)
-                x_l = int(xywh_obj[0]-xywh_obj[2]/2)
-                y_l = int(xywh_obj[1]+xywh_obj[3]/2)
-                x_k = int(xywh_obj[0])
-                y_k = int(xywh_obj[1])
-                p1 = (int(xywh_obj[0]),int(xywh_obj[1]))
 
-                # 객체 중심점
-                point = [x_k, y_k]
-                point1 = [x_h, y_h]
-                point2 = [x_o, y_o]
-                point3 = [x_r, y_r]
-                point4 = [x_l, y_l]
-                if is_inside(pol, point):
-                        cv2.putText(im0,'**Invader**', (50, 75), cv2.FONT_HERSHEY_DUPLEX, 2.0, (0, 0, 255), 3)
-
-
+                #ㅇㅇㅇㅇㅇ 지금 pending
                 # draw boxes for visualization
                 if len(outputs) > 0:
                     bbox_xyxy = outputs[:, :4]
                     identities = outputs[:, 4]
-                    classes = outputs[:, 5]
-                    draw_boxes(im0, bbox_xyxy,[names[i] for i in classes], identities)
-                    # to MOT format
-                    #cv2.line(im0, (x_h, y_h), (x_h, y_h), (0, 0, 255), 5)
-                    tlwh_bboxs = xyxy_to_tlwh(bbox_xyxy)
+                    classes = outputs[:, -1]
 
-                    # Write MOT compliant results to file
+                    obj = [names[i] for i in classes]
+
+                    ## 원하는 obj의 가운데 좌표 얻어냄
+                    if obj != 'person':
+                        obj_x, obj_y = draw_boxes(im0, bbox_xyxy, [names[i] for i in classes], identities)
+
+                    else:
+                        draw_boxes(im0, bbox_xyxy, [names[i] for i in classes], identities)
 
 
-                    if save_txt:
 
 
-                        for j, (tlwh_bbox, output) in enumerate(zip(tlwh_bboxs, outputs)):
-                            cnt += 1
-                            if cnt == 2:
 
+                # My 사람만 인지하여, 파라미터 뽑아내는 부분 #
+                # Deep SORT: person class only
+                idxs_ppl = (det[:, -1] == idx_person).nonzero(as_tuple=False).squeeze(
+                    dim=1)  # 1. List of indices with 'person' class detections
+                dets_ppl = det[idxs_ppl, :-1]  # 2. Torch.tensor with 'person' detections
+                print('\n {} people were detected!'.format(len(idxs_ppl)))
+
+                # Deep SORT: convert data into a proper format
+                Per_xywhs = xyxy2xywh(dets_ppl[:, :-1]).to("cpu")
+                Per_confs = dets_ppl[:, 4].to("cpu")
+
+                # My 식별된 person만 인지#
+                if len(dets_ppl) != 0:
+                    trackers = deepsort.update(Per_xywhs, Per_confs, classes, im0)
+                    #나중에 써먹을 일 없으면 지우기, 써져있는 박스 위에 하나 더 쓰는거
+                    for d in trackers:
+                        plot_one_box(d[:-1], im0, label='ID' + str(int(d[-1])), color=colors[1], line_thickness=1)
+                    if len(trackers) > 0:
+                        Person_bbox_xyxy = trackers[:, :4]
+                        Per_identities = trackers[:, 4]
+                        Per_classes = trackers[:, -1]
+
+                        x_h, y_h = draw_boxes(im0, Person_bbox_xyxy, [names[i] for i in Per_classes], Per_identities)
+                        # x_h, y_h 가 사람 클래스만의 점이 됨.
+                        # My #
+
+                        # !! point 는 사람 클래스의 가운데 점
+                        point = [x_h, y_h]
+
+                        # !! point_2 는 사람 외의 클래스의 가운데 점
+                        point_2 = [obj_x, obj_y]
+
+                        ## xml 가져와서 범위 적용. 상황에 맞게 판단 부분.
+                        if is_inside(pol, point):
+                            ctt+=1
+                            if ctt ==1:
                                 a = frame_idx
-                                print(a)
-                                alt = int(a / 30)
-                            td = int(frame_idx/30)
-                            #makexml(txt_file_name, alt, td)
-                            bbox_top = tlwh_bbox[0]
-                            bbox_left = tlwh_bbox[1]
-                            bbox_w = tlwh_bbox[2]
-                            bbox_h = tlwh_bbox[3]
-                            identity = output[-1]
-                            with open(txt_path, 'a') as f:
-                                f.write(('%g ' * 10 + '\n') % (frame_idx, identity, bbox_top,
-                                                            bbox_left, bbox_w, bbox_h, -1, -1, -1, -1))  # label format
+                            if circumstance == 유기:
+                                cv2.putText(im0, '*Abandoment Danger Area*', (50, 75), cv2.FONT_HERSHEY_DUPLEX, 2.0, (0, 0, 255), 3)
+                                #'해 줘'
+                                abandonment(point, point_2)
+                            elif circumstance == 배회 and frame_idx>a+300:
+                                cv2.putText(im0, '*Suspious*', (50, 75), cv2.FONT_HERSHEY_DUPLEX, 2.0, (0, 0, 255), 3)
+                            elif circumstance == 침입:
+                                cv2.putText(im0, '*Invader*', (50, 75), cv2.FONT_HERSHEY_DUPLEX, 2.0, (0, 0, 255), 3)
+
+
+
 
             else:
                 deepsort.increment_ages()
@@ -382,7 +428,7 @@ def detect(opt):
                 if cv2.waitKey(1) == ord('q'):  # q to quit
                     raise StopIteration
 
-            # Save results (image with detections)
+            # Save results (images with detections)
             if save_vid:
                 if vid_path != save_path:  # new video
                     vid_path = save_path
@@ -407,10 +453,13 @@ def detect(opt):
     print('Done. (%.3fs)' % (time.time() - t0))
 
 
+# 기본으로 지정'--yolo_weights' '--show-vid' '--device'
+# 사용 명령어     python test1.py --source invade.mp4 --img 640
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--yolo_weights', type=str, default='yolov5/weights/gg.pt', help='model.pt path')
-    parser.add_argument('--deep_sort_weights', type=str, default='deep_sort_pytorch/deep_sort/deep/checkpoint/ckpt.t7', help='ckpt.t7 path')
+    parser.add_argument('--yolo_weights', type=str, default='yolov5/weights/yolov5m.pt', help='model.pt path')
+    parser.add_argument('--deep_sort_weights', type=str, default='deep_sort_pytorch/deep_sort/deep/checkpoint/ckpt.t7',
+                        help='ckpt.t7 path')
     # file/folder, 0 for webcam
     parser.add_argument('--source', type=str, default='0', help='source')
     parser.add_argument('--output', type=str, default='inference/output', help='output folder')  # output folder
@@ -419,17 +468,18 @@ if __name__ == '__main__':
     parser.add_argument('--iou-thres', type=float, default=0.5, help='IOU threshold for NMS')
     parser.add_argument('--fourcc', type=str, default='mp4v', help='output video codec (verify ffmpeg support)')
     parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
-    parser.add_argument('--show-vid', action='store_true', help='display tracking video results')
+    parser.add_argument('--show-vid', action='store_true', default='store_true', help='display tracking video results')
     parser.add_argument('--save-vid', action='store_true', help='save video tracking results')
     parser.add_argument('--save-txt', action='store_true', help='save MOT compliant results to *.txt')
     # class 0 is person, 1 is bycicle, 2 is car... 79 is oven
-    parser.add_argument('--classes', default='0', nargs='+', type=int, help='filter by class: --class 0, or --class 16 17')
+    parser.add_argument('--classes', nargs='+', type=int, help='filter by class: --class 0, or --class 16 17')
     parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
     parser.add_argument('--augment', action='store_true', help='augmented inference')
     parser.add_argument('--evaluate', action='store_true', help='augmented inference')
     parser.add_argument("--config_deepsort", type=str, default="deep_sort_pytorch/configs/deep_sort.yaml")
     args = parser.parse_args()
     args.img_size = check_img_size(args.img_size)
+    print(args)
 
     with torch.no_grad():
         detect(args)

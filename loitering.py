@@ -1,7 +1,6 @@
 import sys
-import math
 sys.path.insert(0, './yolov5')
-from xml.etree.ElementTree import Element, SubElement, ElementTree
+
 from yolov5.utils.google_utils import attempt_download
 from yolov5.models.experimental import attempt_load
 from yolov5.utils.datasets import LoadImages, LoadStreams
@@ -19,17 +18,18 @@ from pathlib import Path
 import cv2
 import torch
 import torch.backends.cudnn as cudnn
-import datetime
 from lxml import etree
 
 
-
 palette = (2 ** 11 - 1, 2 ** 15 - 1, 2 ** 20 - 1)
+click = False  # Mouse 클릭된 상태 (false = 클릭 x / true = 클릭 o) : 마우스 눌렀을때 true로, 뗏을때 false로
+x1, y1 = -1, -1
+x2, y2 = -1, -1
 
 def xml(filename):
     tree = etree.parse(filename)
     root = tree.getroot()
-    d = root.find('.//Intrusion').findall('Point')
+    d = root.find('.//Loitering').findall('Point')
     return d
 
 def is_inside(polygon, point):
@@ -66,6 +66,30 @@ def is_inside(polygon, point):
         cross_points += num
     return cross_points % 2
 
+def catch(person_corX, person_corY):
+    mylineX1 = 250
+    mylineY1 = 212
+    mylineX2 = 900
+    mylineY2 = 586
+    b = 0
+    if mylineX1<person_corX and person_corX<mylineX2:
+        if mylineY1<person_corY and person_corY<mylineY2:
+            return True
+def catchloitering(person_corX, person_corY, frame_idx):
+
+    # 처음에 if 함수로 써서 라인 기울기 음, 양에 따라 다른 케이스로 진행하는게 나을듯.
+    # myline에서 가져오는코드로735
+    #line = [(735, 520), (1093, 287)]
+    mylineX1 = x1
+    mylineY1 = y1
+    mylineX2 = x2
+    mylineY2 = y2
+    if mylineX1<person_corX and person_corX<mylineX2:
+        if mylineY1<person_corY and person_corY<mylineY2:
+            if frame_idx>300:
+                return True
+
+
 def xyxy_to_xywh(*xyxy):
     """" Calculates the relative bounding box from absolute pixel values. """
     bbox_left = min([xyxy[0].item(), xyxy[2].item()])
@@ -91,27 +115,6 @@ def xyxy_to_tlwh(bbox_xyxy):
     return tlwh_bboxs
 
 
-def makexml(filename,alt,frame_idx):
-
-    root = Element('KisaLibraryIndex')
-    lib = SubElement(root,'Library')
-    SubElement(lib,'Senario').text = 'Intrusion'
-    SubElement(lib,'Dataset').text = 'KISA201'
-    SubElement(lib,'Libversion').text = '1.0'
-    clip = SubElement(lib,'Clip')
-    head = SubElement(clip,'Header')
-    SubElement(head,'Filename').text = filename+'.mp4'
-    SubElement(head,'Duration').text =(lambda x : '0'+x if len(x) < 8 else x)(str(datetime.timedelta(seconds = frame_idx)))
-    SubElement(head, 'AlarmEvents').text ='1'
-    al = SubElement(clip,'Alarms')
-    alm = SubElement(al,'Alarm')
-    SubElement(alm,'StartTime').text = (lambda x : '0'+x if len(x) < 8 else x)(str(datetime.timedelta(seconds = alt)))
-    SubElement(alm,'AlarmDescription').text = 'Intrusion'
-    SubElement(alm,'AlarmDuration').text = '00:00:10'
-
-
-    tree = ElementTree(root)
-    tree.write('./' + filename + '.xml')
 def compute_color_for_labels(label):
     """
     Simple function that adds fixed color depending on the class
@@ -120,7 +123,7 @@ def compute_color_for_labels(label):
     return tuple(color)
 
 
-def draw_boxes(img, bbox, cls_names, identities=None, offset=(0, 0)):
+def draw_boxes(img, bbox,cls_names, identities=None, offset=(0, 0)):
     for i, box in enumerate(bbox):
         x1, y1, x2, y2 = [int(i) for i in box]
         x1 += offset[0]
@@ -133,44 +136,27 @@ def draw_boxes(img, bbox, cls_names, identities=None, offset=(0, 0)):
         label = '%d %s' % (id, cls_names[i])
         t_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_PLAIN, 2, 2)[0]
         cv2.rectangle(img, (x1, y1), (x2, y2), color, 3)
-        y_h = int(y1+(y2-y1)/2)
-        x_h = int(x1+(x2-x1)/2)
-        cv2.line(img, (x_h, y_h), (x_h, y_h), (0, 0, 255), 5)
         cv2.rectangle(
             img, (x1, y1), (x1 + t_size[0] + 3, y1 + t_size[1] + 4), color, -1)
-        cv2.putText(img, label, (x1, y1 + t_size[1] + 4), cv2.FONT_HERSHEY_PLAIN, 2, [255, 255, 255], 2)
+        cv2.putText(img, label, (x1, y1 +
+                                 t_size[1] + 4), cv2.FONT_HERSHEY_PLAIN, 2, [255, 255, 255], 2)
     #return img
 
+def draw_rectangle(event, x, y, flags, param):
+        # 전역변수
+    global x1, y1, click, x2, y2  # 전역변수 사용
 
-def myInterSibal(person_corX, person_corY):
-    # 처음에 if 함수로 써서 라인 기울기 음, 양에 따라 다른 케이스로 진행하는게 나을듯.
-    # myline에서 가져오는코드로735
-    #line = [(735, 520), (1093, 287)]
-    mylineX1 = 735
-    mylineY1 = 520
-    mylineX2 = 1093
-    mylineY2 = 287
-    #라인 기울기 Lgiul
-
-    Lgiul = (mylineY2-mylineY1)/(mylineX2-mylineX1)
-
-    #점과 라인 기울기 spot_Lgiul
-    spot_Lgiul1 = (person_corY-mylineY1)/(person_corX-mylineX1)
-    spot_Lgiul2 = (mylineY2-person_corY)/(mylineX2-person_corX)
-    c = math.degrees(2 * math.pi)
-
-    if Lgiul < 0:
-        if spot_Lgiul2 > Lgiul and person_corY>mylineY2 and person_corY<mylineY1:
-            return True
-        else: return False
-
-    elif Lgiul > 0:
-        if spot_Lgiul2 < Lgiul:
-            return True
-        else:
-            return False
+    if event == cv2.EVENT_LBUTTONDOWN:  # 마우스를 누른 상태
+        click = True
+        x1, y1 = x, y
+        print("사각형의 왼쪽위 설정 : (" + str(x1) + ", " + str(y1) + ")")
 
 
+
+    elif event == cv2.EVENT_LBUTTONUP:
+        click = False;  # 마우스를 때면 상태 변경
+        x2, y2 = x, y
+        print("사각형의 왼쪽위 설정 : (" + str(x2) + ", " + str(y2) + ")")
 
 def detect(opt):
     out, source, yolo_weights, deep_sort_weights, show_vid, save_vid, save_txt, imgsz, evaluate = \
@@ -179,9 +165,11 @@ def detect(opt):
     webcam = source == '0' or source.startswith(
         'rtsp') or source.startswith('http') or source.endswith('.txt')
     cnt = 1
+
+
+
+
     # initialize deepsort
-    counter = 0
-    line = [(735, 520), (1093, 287)]
     cfg = get_config()
     cfg.merge_from_file(opt.config_deepsort)
     attempt_download(deep_sort_weights, repo='mikel-brostrom/Yolov5_DeepSort_Pytorch')
@@ -190,11 +178,10 @@ def detect(opt):
                         nms_max_overlap=cfg.DEEPSORT.NMS_MAX_OVERLAP, max_iou_distance=cfg.DEEPSORT.MAX_IOU_DISTANCE,
                         max_age=cfg.DEEPSORT.MAX_AGE, n_init=cfg.DEEPSORT.N_INIT, nn_budget=cfg.DEEPSORT.NN_BUDGET,
                         use_cuda=True)
+    ctt = 0
+    # Incnt = 1itialize
 
-    # Initialize
     device = select_device(opt.device)
-
-
 
     # The MOT16 evaluation runs multiple inference streams in parallel, each one writing to
     # its own .txt file. Hence, in that case, the output folder is not restored
@@ -209,7 +196,7 @@ def detect(opt):
     model = attempt_load(yolo_weights, map_location=device)  # load FP32 model
     stride = int(model.stride.max())  # model stride
     imgsz = check_img_size(imgsz, s=stride)  # check img_size
-
+      # get class names
     if half:
         model.half()  # to FP16
 
@@ -239,7 +226,6 @@ def detect(opt):
     txt_path = str(Path(out)) + '/' + txt_file_name + '.txt'
 
     for frame_idx, (path, img, im0s, vid_cap) in enumerate(dataset):
-
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
@@ -247,7 +233,6 @@ def detect(opt):
             img = img.unsqueeze(0)
 
         # Inference
-
         t1 = time_synchronized()
         pred = model(img, augment=opt.augment)[0]
 
@@ -268,7 +253,7 @@ def detect(opt):
             e = []
             pol = []
             ct = 0
-            for o in xml('C104301_001.xml'):
+            for o in xml('C099100_005.xml'):
                 v = o.text.split(',')
                 e.append(v)
                 pol.append([])
@@ -281,6 +266,11 @@ def detect(opt):
                              2)
                 else:
                     cv2.line(im0, (int(e[i][0]), int(e[i][1])), (int(e[0][0]), int(e[0][1])), (0, 255, 255), 2)
+            #cv2.line(im0, (700, 170), (960, 170), (0, 255, 255), 2)
+            #cv2.line(im0, (960, 170), (1056, 520), (0, 255, 255), 2)
+            #cv2.line(im0, (1056, 520), (55, 449), (0, 255, 255), 2)
+            #cv2.line(im0, (55, 449), (55, 298), (0, 255, 255), 2)
+            #cv2.line(im0, (55, 298), (700, 170), (0, 255, 255), 2)
 
             if det is not None and len(det):
                 # Rescale boxes from img_size to im0 size
@@ -292,75 +282,50 @@ def detect(opt):
                     n = (det[:, -1] == c).sum()  # detections per class
                     s += '%g %ss, ' % (n, names[int(c)])  # add to string
 
-
                 xywh_bboxs = []
                 confs = []
-                classes= []
-
+                classes = []
                 # Adapt detections to deep sort input format
                 for *xyxy, conf, cls in det:
                     # to deep sort format
                     x_c, y_c, bbox_w, bbox_h = xyxy_to_xywh(*xyxy)
                     xywh_obj = [x_c, y_c, bbox_w, bbox_h]
                     xywh_bboxs.append(xywh_obj)
-
                     confs.append([conf.item()])
                     classes.append([cls.item()])
-
                 xywhs = torch.Tensor(xywh_bboxs)
                 confss = torch.Tensor(confs)
                 classes = torch.Tensor(classes)
-
-
                 # pass detections to deepsort
+
                 outputs = deepsort.update(xywhs, confss, classes, im0)
-                x_h = int(xywh_obj[0]+xywh_obj[2]/2) #오른쪽 하단
-                y_h = int(xywh_obj[1]+xywh_obj[3]/2)
-                x_o = int(xywh_obj[0]-xywh_obj[2]/2) #왼쪽 상단
-                y_o = int(xywh_obj[1]-xywh_obj[3]/2)
-                x_r = int(xywh_obj[1]-xywh_obj[3]/2) #오른쪽 상단
-                y_r = int(xywh_obj[0]+xywh_obj[2]/2)
-                x_l = int(xywh_obj[0]-xywh_obj[2]/2)
-                y_l = int(xywh_obj[1]+xywh_obj[3]/2)
                 x_k = int(xywh_obj[0])
                 y_k = int(xywh_obj[1])
-                p1 = (int(xywh_obj[0]),int(xywh_obj[1]))
 
-                # 객체 중심점
-                point = [x_k, y_k]
-                point1 = [x_h, y_h]
-                point2 = [x_o, y_o]
-                point3 = [x_r, y_r]
-                point4 = [x_l, y_l]
+
+                point = [x_k,y_k]
                 if is_inside(pol, point):
-                        cv2.putText(im0,'**Invader**', (50, 75), cv2.FONT_HERSHEY_DUPLEX, 2.0, (0, 0, 255), 3)
-
-
+                    ctt +=1
+                    if ctt == 1:
+                        a = frame_idx
+                        print(a)
+                if is_inside(pol, point):
+                    if frame_idx> a+300:
+                        cv2.putText(im0,'**Loitering**', (50, 75), cv2.FONT_HERSHEY_DUPLEX, 2.0, (0, 0, 255), 3)
+                        print(a)
                 # draw boxes for visualization
                 if len(outputs) > 0:
                     bbox_xyxy = outputs[:, :4]
                     identities = outputs[:, 4]
                     classes = outputs[:, 5]
-                    draw_boxes(im0, bbox_xyxy,[names[i] for i in classes], identities)
+                    draw_boxes(im0, bbox_xyxy, [names[i] for i in classes], identities)
                     # to MOT format
-                    #cv2.line(im0, (x_h, y_h), (x_h, y_h), (0, 0, 255), 5)
                     tlwh_bboxs = xyxy_to_tlwh(bbox_xyxy)
 
+
                     # Write MOT compliant results to file
-
-
                     if save_txt:
-
-
                         for j, (tlwh_bbox, output) in enumerate(zip(tlwh_bboxs, outputs)):
-                            cnt += 1
-                            if cnt == 2:
-
-                                a = frame_idx
-                                print(a)
-                                alt = int(a / 30)
-                            td = int(frame_idx/30)
-                            #makexml(txt_file_name, alt, td)
                             bbox_top = tlwh_bbox[0]
                             bbox_left = tlwh_bbox[1]
                             bbox_w = tlwh_bbox[2]
@@ -373,11 +338,14 @@ def detect(opt):
             else:
                 deepsort.increment_ages()
 
+            cv2.setMouseCallback(p, draw_rectangle, im0)
+            cv2.rectangle(im0, (x1, y1), (x2, y2), (0, 255, 255), 2)
             # Print time (inference + NMS)
             print('%sDone. (%.3fs)' % (s, t2 - t1))
 
             # Stream results
             if show_vid:
+
                 cv2.imshow(p, im0)
                 if cv2.waitKey(1) == ord('q'):  # q to quit
                     raise StopIteration
@@ -409,7 +377,7 @@ def detect(opt):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--yolo_weights', type=str, default='yolov5/weights/gg.pt', help='model.pt path')
+    parser.add_argument('--yolo_weights', type=str, default='yolov5/weights/yolov5x.pt', help='model.pt path')
     parser.add_argument('--deep_sort_weights', type=str, default='deep_sort_pytorch/deep_sort/deep/checkpoint/ckpt.t7', help='ckpt.t7 path')
     # file/folder, 0 for webcam
     parser.add_argument('--source', type=str, default='0', help='source')
@@ -418,12 +386,12 @@ if __name__ == '__main__':
     parser.add_argument('--conf-thres', type=float, default=0.4, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.5, help='IOU threshold for NMS')
     parser.add_argument('--fourcc', type=str, default='mp4v', help='output video codec (verify ffmpeg support)')
-    parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
+    parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--show-vid', action='store_true', help='display tracking video results')
     parser.add_argument('--save-vid', action='store_true', help='save video tracking results')
     parser.add_argument('--save-txt', action='store_true', help='save MOT compliant results to *.txt')
     # class 0 is person, 1 is bycicle, 2 is car... 79 is oven
-    parser.add_argument('--classes', default='0', nargs='+', type=int, help='filter by class: --class 0, or --class 16 17')
+    parser.add_argument('--classes', nargs='+', type=int, help='filter by class: --class 0, or --class 16 17')
     parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
     parser.add_argument('--augment', action='store_true', help='augmented inference')
     parser.add_argument('--evaluate', action='store_true', help='augmented inference')
