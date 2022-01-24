@@ -5,7 +5,7 @@
 
 
 1. pycharm을 설치
-2. anaconda prompt 창켜서 가상환경 만든다 conda create -n 도균이원하는이름 python=3.8
+2. anaconda prompt 창켜서 가상환경 만든다 conda create -n 원하는이름 python=3.8
 3. conda activate 만든가상환경이름
 4. 파이참으로 넘어와서 만든 가상환경 open해주고 settings 들어가서 python interpreter누르고 우측상단에 설정모양 누르고 add누르고 conda enviroment 누르고 existing enviroment 누르고 가상환경안의 python 선택 후 저장
 5. 이제 터미널 창에 git clone https://github.com/qweasx10/tracker2.git
