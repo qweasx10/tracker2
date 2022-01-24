@@ -3,7 +3,7 @@
 
 
 
-
+#실행방법
 1. pycharm을 설치
 2. anaconda prompt 창켜서 가상환경 만든다 conda create -n 원하는이름 python=3.8
 3. conda activate 만든가상환경이름
@@ -18,7 +18,7 @@
 12. 그렇군
 <div align="center">
 <p>
-<img src="MOT16_eval/track_pedestrians.gif" width="400"/> <img src="MOT16_eval/track_all.gif" width="400"/> 
+<img src="MOT16_eval/KakaoTalk_20220124_180117100.png" width="400"/> <img src="MOT16_eval/track_all.gif" width="400"/> 
 </p>
 <br>
 <div>
