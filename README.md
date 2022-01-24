@@ -1,5 +1,6 @@
 # Yolov5 + Deep Sort with PyTorch
 # 이상행동 감지 기능 구현
+# 웹으로 구현한 서비스는 -> https://github.com/qweasx10/flask-tracker2
 
 
 
