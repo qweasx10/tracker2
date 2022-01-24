@@ -3,7 +3,7 @@
 
 
 
-#실행방법
+# 실행방법
 1. pycharm을 설치
 2. anaconda prompt 창켜서 가상환경 만든다 conda create -n 원하는이름 python=3.8
 3. conda activate 만든가상환경이름
@@ -15,7 +15,8 @@
 9. 실행파일이 2개 있는데 tracker.py는 기존 Invade.py는 침입임 
 10. 실행해보자 python 원하는파일.py --device 0 --source 0 --show-vid --save-txt
 11. --device 0(gpu 사용한다는거) --source 0(캠) or 파일이름.mp4(이러면 저장된 비디오 재생) --show-vid(모니터링) --save-txt(결과 텍스트파일로 저장)
-12. 그렇군
+
+# 실행예시
 <div align="center">
 <p>
 <img src="MOT16_eval/KakaoTalk_20220124_180117100.png" width="400"/> <img src="MOT16_eval/KakaoTalk_20220124_180126569.png" width="400"/><img src="MOT16_eval/KakaoTalk_20220124_180137856.png" width="400"/> 
