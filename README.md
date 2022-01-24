@@ -3,7 +3,6 @@
 
 
 
-## 도균이를 위한 설명
 
 1. pycharm을 설치
 2. anaconda prompt 창켜서 가상환경 만든다 conda create -n 도균이원하는이름 python=3.8
